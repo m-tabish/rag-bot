@@ -3,35 +3,31 @@ from dotenv import load_dotenv
 from generate_result import generate_result
 import streamlit as st
 from PyPDF2 import PdfReader
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Constants
 CHROMA_PATH = "chroma"
-KNOWLEDGE_BASE = os.path.abspath("./knowledgeBase")
-PDF_FILE_NAME = "knwoledge-base.pdf"  # Replace with your PDF file name
-PDF_FILE_PATH = os.path.join(KNOWLEDGE_BASE, PDF_FILE_NAME)
+UPLOAD_FOLDER = os.path.abspath("./uploaded_files")
 
-# Ensure the knowledge base directory exists
-os.makedirs(KNOWLEDGE_BASE, exist_ok=True)
+# Ensure the upload directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Function to process and extract text from a PDF file and return Document objects
 def extract_text_from_pdf_to_documents(pdf_path):
     documents = []
     try:
-        # Check if the PDF file exists before trying to open it
         if not os.path.isfile(pdf_path):
             st.error(f"The file {pdf_path} does not exist.")
             return documents
-        
-        with open(pdf_path, "rb") as file:  
+
+        with open(pdf_path, "rb") as file:
             reader = PdfReader(file)
             for page_num, page in enumerate(reader.pages):
                 text = page.extract_text()
                 if text:
-                    # Create a Document object for each page with the extracted text
                     doc = Document(page_content=text)
                     documents.append(doc)
     except PermissionError:
@@ -42,38 +38,59 @@ def extract_text_from_pdf_to_documents(pdf_path):
 
 # Main function for generating embeddings and searching results
 def main(user_input, documents):
-    '''----------------------------------------------------------''' 
-    # Perform similarity search using the documents (assuming generate_result works with Document objects)
     result = generate_result(user_input, documents)
-    return result 
-    '''----------------------------------------------------------'''
+    return result
 
 # Streamlit app title
 st.markdown("""<h1 style="text-align:center; font-family:monospace;">Answer Bot 🤖</h1>""", unsafe_allow_html=True)
 st.markdown(
     """
     <div style="text-align: center; font-size:24px">
-        <h5>The bot takes the knowledge from "Attention is all you need" Research Paper</h5> 
+        <h5>Upload a PDF and ask questions about its content</h5>
     </div>
     """,
     unsafe_allow_html=True,
 )
-# Multi-line text input for user query
-user_input = st.text_area("What would you like to search?")
 
-# Variable to store the extracted text from the specified PDF file in KNOWLEDGE_BASE
-documents = extract_text_from_pdf_to_documents(PDF_FILE_PATH)
+# --- File Upload Section ---
+uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
 
-# Process user input if any documents are available
+documents = []
+
+if uploaded_file is not None:
+    # Save the uploaded file to the uploaded_files folder
+    save_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
+    with open(save_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    st.success(f"✅ File **{uploaded_file.name}** uploaded successfully!")
+
+    # Extract documents from the uploaded PDF
+    documents = extract_text_from_pdf_to_documents(save_path)
+
+    if documents:
+        st.info(f"📖 Extracted **{len(documents)}** pages from the PDF.")
+    else:
+        st.warning("⚠️ Could not extract any text from the uploaded PDF.")
+
+# --- Query Section ---
+user_input = st.text_area("What would you like to search?", placeholder="Type your question here...")
+
 if user_input and documents:
-    result = main(user_input, documents)
-    st.write(result)
+    with st.spinner("🔍 Searching for answers..."):
+        result = main(user_input, documents)
+    
+    # Display result in a nice formatted container
+    st.markdown("---")
+    st.markdown("### 💡 Answer:")
+    st.info(result)
+elif user_input and not documents:
+    st.warning("Please upload a PDF file first.")
 
 # Footer for the app
 st.markdown(
     """
     <div style="text-align: center;">
-        <h3>Developed by <a href="https://github.com/m-tabish" target="_blank" style="color: #00FF00; display:inline;">Tabish</a></h3> 
+        <h3>Developed by <a href="https://github.com/m-tabish" target="_blank"  display:inline;">Tabish</a></h3>
     </div>
     """,
     unsafe_allow_html=True,
